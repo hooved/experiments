@@ -1,0 +1,3 @@
+[submodule "repos/vqgan-training"]
+	path = repos/vqgan-training
+	url = https://github.com/hooved/vqgan-training.git
