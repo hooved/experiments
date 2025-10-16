@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "shuffle-cuda",
+      "type": "shell",
+      "command": "echo CUDA_VISIBLE_DEVICES=$(shuf -e 0 1 2 3 | tr ' ' ',') > .vscode/cuda.env"
+    }
+  ]
+}
