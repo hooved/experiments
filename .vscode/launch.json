@@ -17,7 +17,7 @@
       //}
     },
     {
-      "name": "vae_trainer",
+      "name": "simo_vae_trainer",
       "type": "debugpy",
       "request": "launch",
       "cwd": "${workspaceFolder}/repos/vqgan-training",
@@ -30,9 +30,32 @@
         "vae_trainer.py",
         "--dataset_url", "/raid/datasets/imagenet_wds/n03733281_train.tar",
         "--test_dataset_url", "/raid/datasets/imagenet_wds/n03733281_val.tar",
+        "--batch_size=4",
       ],
-      //"preLaunchTask": "shuffle-cuda",
-      //"envFile": "${workspaceFolder}/.vscode/cuda.env",
+      "preLaunchTask": "shuffle-cuda",
+      "envFile": "${workspaceFolder}/.vscode/cuda.env",
+
+      "env": {
+          //"PYTHONPATH": "${workspaceFolder}/repos/",
+          "WANDB_MODE": "offline",
+      }
+    },
+    {
+      "name": "ld_vae_train",
+      "type": "debugpy",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/repos/latent-diffusion",
+      //"module": "torch.distributed.run",
+      "program": "${workspaceFolder}/repos/latent-diffusion/main.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,
+      "args": [
+        "--base", "configs/autoencoder/autoencoder_kl_32x32x4.yaml",
+        "-t", "--accelerator", "gpu", "--devices", "0",
+      ],
+      "preLaunchTask": "shuffle-cuda",
+      "envFile": "${workspaceFolder}/.vscode/cuda.env",
 
       "env": {
           //"PYTHONPATH": "${workspaceFolder}/repos/",
