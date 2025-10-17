@@ -1,3 +1,6 @@
 [submodule "repos/vqgan-training"]
 	path = repos/vqgan-training
 	url = https://github.com/hooved/vqgan-training.git
+[submodule "repos/latent-diffusion"]
+	path = repos/latent-diffusion
+	url = https://github.com/hooved/latent-diffusion.git
