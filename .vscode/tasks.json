@@ -4,7 +4,7 @@
     {
       "label": "shuffle-cuda",
       "type": "shell",
-      "command": "echo CUDA_VISIBLE_DEVICES=$(shuf -e 0 1 2 3 | tr ' ' ',') > .vscode/cuda.env"
+      "command": "echo CUDA_VISIBLE_DEVICES=$(shuf -e 0 1 2 3 | paste -sd, -) > .vscode/cuda.env"
     }
   ]
 }

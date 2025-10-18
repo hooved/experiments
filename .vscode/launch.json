@@ -52,7 +52,7 @@
       "subProcess": true,
       "args": [
         "--base", "configs/autoencoder/autoencoder_kl_32x32x4.yaml",
-        "-t", "--accelerator", "gpu", "--devices", "0",
+        "-t", "--accelerator", "gpu", "--devices", "0,1,2,3",
       ],
       "preLaunchTask": "shuffle-cuda",
       "envFile": "${workspaceFolder}/.vscode/cuda.env",
