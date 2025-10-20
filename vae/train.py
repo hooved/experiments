@@ -1,8 +1,9 @@
 # minimal vae training implementation
 from torch import nn, Tensor
-from torch.nn import Conv2d, GroupNorm
 from torch.nn.functional import silu, pad
-from helpers import TypedModuleList as ModuleList
+import helpers
+ModuleList = helpers.ModuleListTyped
+Conv2d, GroupNorm = helpers.Conv2dTyped, helpers.GroupNormTyped
 
 class ResnetBlock(nn.Module):
   def __init__(self, in_ch:int, out_ch:int):
