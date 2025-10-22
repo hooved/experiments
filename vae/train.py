@@ -1,6 +1,6 @@
 # minimal vae training implementation
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
 import helpers
 from helpers import ModuleListTyped as ModuleList
@@ -151,12 +151,42 @@ class Decoder(Module):
     x = self.conv_out(x)
     return x
 
+class DiagonalGaussian(Module):
+  def __init__(self, mean_logvar:Tensor):
+    self.mean, self.logvar = mean_logvar.chunk(2, dim=1)
+
+class AutoencoderKL(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.encoder = Encoder(in_ch=3, ch=128)
+    self.quant_conv = Conv2d(8, 8, kernel_size=1)
+    self.post_quant_conv = Conv2d(4, 4, kernel_size=1)
+    self.decoder = Decoder(in_ch=4, ch=128)
+
+  def encode(self, x:Tensor) -> Tensor:
+    x = self.encoder(x)
+    mean_logvar = self.quant_conv(x)
+    return mean_logvar
+
+  def decode(self, z:Tensor) -> Tensor:
+    z = self.post_quant_conv(z)
+    x_recon = self.decoder(z)
+    return x_recon
+
+  def forward(self, x:Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    mean_logvar = self.encode(x)
+    mean, logvar = mean_logvar.chunk(2, dim=1)
+    logvar = logvar.clamp(-30.0, 20.0)
+    z = mean + torch.exp(0.5 * logvar) * torch.randn_like(logvar)
+    x_recon = self.decode(z)
+    return x_recon, mean, logvar
+
 if __name__=="__main__":
-  enc = Encoder(3, 128)
+  enc = Encoder(in_ch=3, ch=128)
   test = torch.randn(1,3,256,256)
   out = enc(test)
 
-  dec = Decoder(4, 128)
+  dec = Decoder(in_ch=4, ch=128)
   test = torch.randn(1,4,32,32)
   out = dec(test)
   pause = 1
