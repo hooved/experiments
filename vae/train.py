@@ -1,9 +1,13 @@
 # minimal vae training implementation
-import torch
-from torch import Tensor, nn
+import torch, torchvision, helpers
+from torch import Tensor, nn, distributed as dist
 from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
-import helpers
-from helpers import ModuleListTyped as ModuleList
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
+from helpers import ModuleListTyped as ModuleList, getenv
+from pathlib import Path
+from PIL import Image
 from typing import Literal
 
 Module = helpers.ModuleCallTyped
@@ -181,12 +185,32 @@ class AutoencoderKL(nn.Module):
     x_recon = self.decode(z)
     return x_recon, mean, logvar
 
-if __name__=="__main__":
-  enc = Encoder(in_ch=3, ch=128)
-  test = torch.randn(1,3,256,256)
-  out = enc(test)
+class ImageDataset(Dataset):
+  def __init__(self, img_dir:str, transforms:torchvision.transforms.Compose|None=None, exts:set[str]={".jpeg"}):
+    self.paths = sorted([p for p in Path(img_dir).iterdir() if p.suffix.lower() in exts])
+    self.transforms = transforms
 
-  dec = Decoder(in_ch=4, ch=128)
-  test = torch.randn(1,4,32,32)
-  out = dec(test)
-  pause = 1
+  def __len__(self): return len(self.paths)
+
+  def __getitem__(self, i:int) -> Tensor:
+    img = Image.open(self.paths[i])
+    if img.mode != "RGB":
+      img = img.convert("RGB")
+    if self.transforms:
+      img = self.transforms(img)
+    assert isinstance(img, Tensor)
+    return img
+
+def train():
+  config = {}
+  TRAIN_IMG_DIR = config["TRAIN_IMG_DIR"] = getenv("TRAIN_IMG_DIR", "")
+  EVAL_IMG_DIR  = config["EVAL_IMG_DIR"]  = getenv("EVAL_IMG_DIR", "")
+  assert all(v for v in config.values()), f"set these env vars: {[k for k,v in config.items() if not v]}"
+
+  train_data = ImageDataset(TRAIN_IMG_DIR)
+  eval_data = ImageDataset(EVAL_IMG_DIR)
+
+
+
+if __name__=="__main__":
+  train()
