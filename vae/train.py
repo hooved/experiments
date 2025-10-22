@@ -1,4 +1,4 @@
-# minimal vae training implementation
+# minimal vae training implementation, based on https://github.com/CompVis/latent-diffusion
 import torch, torchvision, helpers, random, numpy as np
 from torch import Tensor, nn, distributed as dist
 from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
