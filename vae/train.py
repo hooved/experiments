@@ -1,5 +1,5 @@
 # minimal vae training implementation
-import torch, torchvision, helpers
+import torch, torchvision, helpers, random
 from torch import Tensor, nn, distributed as dist
 from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -194,23 +194,36 @@ class ImageDataset(Dataset):
 
   def __getitem__(self, i:int) -> Tensor:
     img = Image.open(self.paths[i])
-    if img.mode != "RGB":
-      img = img.convert("RGB")
-    if self.transforms:
-      img = self.transforms(img)
+    img = img.convert("RGB") if img.mode != "RGB" else img
+    img = self.transforms(img) if self.transforms else img
     assert isinstance(img, Tensor)
     return img
 
+def make_dl(ds, BS:int, shuffle=False, drop_last=False, num_workers=4):
+    sampler=DistributedSampler(ds, shuffle=shuffle, drop_last=drop_last)
+    return DataLoader(ds, batch_size=BS, shuffle=False, sampler=sampler, drop_last=drop_last,
+                      num_workers=num_workers, pin_memory=True, persistent_workers=True)
+
 def train():
+  assert torch.cuda.is_available()
+  assert torch.distributed.is_available() and torch.distributed.is_initialized()
+
   config = {}
+  BS            = config["BS"]            = getenv("BS", 6)
+  EVAL_BS       = config["BS"]            = getenv("BS", 6)
   TRAIN_IMG_DIR = config["TRAIN_IMG_DIR"] = getenv("TRAIN_IMG_DIR", "")
   EVAL_IMG_DIR  = config["EVAL_IMG_DIR"]  = getenv("EVAL_IMG_DIR", "")
+  SEED          = config["SEED"]          = getenv("SEED", 12345)
   assert all(v for v in config.values()), f"set these env vars: {[k for k,v in config.items() if not v]}"
 
-  train_data = ImageDataset(TRAIN_IMG_DIR)
-  eval_data = ImageDataset(EVAL_IMG_DIR)
+  dist.init_process_group(backend="nccl")
+  torch.cuda.set_device(local_rank:=getenv("LOCAL_RANK"))
+  device = torch.device(f"cuda:{local_rank}")
 
-
+  data_train = ImageDataset(TRAIN_IMG_DIR)
+  dl_train = make_dl(data_train, BS)
+  data_eval = ImageDataset(EVAL_IMG_DIR)
+  dl_eval = make_dl(data_eval, EVAL_BS, shuffle=False)
 
 if __name__=="__main__":
   train()
