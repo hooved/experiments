@@ -1,7 +1,11 @@
+import os
 from collections.abc import Iterator
 from typing import Generic, TypeVar, overload
 from torch import nn, Tensor
 T = TypeVar("T", bound=nn.Module)
+
+# from tinygrad
+def getenv(key:str, default=0): return type(default)(os.getenv(key, default))
 
 # from https://github.com/pytorch/pytorch/issues/80821
 class ModuleListTyped(Generic[T], nn.ModuleList):
