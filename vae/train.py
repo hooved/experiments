@@ -1,14 +1,15 @@
 # minimal vae training implementation, based on https://github.com/CompVis/latent-diffusion
-import torch, torchvision, helpers, random, numpy as np
+import torch, helpers, random, numpy as np
 from torch import Tensor, nn, distributed as dist
 from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from torchvision.transforms import v2 as T
+from torchvision.io import read_image
 from helpers import ModuleListTyped as ModuleList, getenv
 from pathlib import Path
-from PIL import Image
-from typing import Literal
+from typing import Literal, Callable
 
 Module = helpers.ModuleCallTyped
 Conv2d, GroupNorm = helpers.Conv2dTyped, helpers.GroupNormTyped
@@ -186,23 +187,35 @@ class AutoencoderKL(nn.Module):
     return x_recon, mean, logvar
 
 class ImageDataset(Dataset):
-  def __init__(self, img_dir:str, transforms:torchvision.transforms.Compose|None=None, exts:set[str]={".jpeg"}):
+  def __init__(self, img_dir:str, transform:Callable|None=None, exts:set[str]={".jpeg"}):
     self.paths = sorted([p for p in Path(img_dir).iterdir() if p.suffix.lower() in exts])
-    self.transforms = transforms
+    self.transform = transform
 
   def __len__(self): return len(self.paths)
 
   def __getitem__(self, i:int) -> Tensor:
-    img = Image.open(self.paths[i])
-    img = img.convert("RGB") if img.mode != "RGB" else img
-    img = self.transforms(img) if self.transforms else img
+    img = read_image(self.paths[i])
+    img = self.transform(img) if self.transform else img
     assert isinstance(img, Tensor)
     return img
 
-def set_seed(seed:int):
+MODEL_IMG_LEN=256
+def transform_train(img:Tensor) -> Tensor:
+  crop_len = max(int(min(img.shape[2:]) * np.random.uniform(0.5, 1.0)), MODEL_IMG_LEN)
+  img = T.RandomCrop(crop_len)(img)
+  # note reference uses albumentations.SmallestMaxSize(max_size=size, interpolation=cv2.INTER_AREA)
+  img = interpolate(img, size=(MODEL_IMG_LEN, MODEL_IMG_LEN), mode="area") 
+  img = (img/127.5 - 1.0).to(torch.float32)
+  return img
+
+def transform_eval(img:Tensor) -> Tensor:
+  return img[:, :, 0:MODEL_IMG_LEN, 0:MODEL_IMG_LEN]
+
+# TODO: per-epoch seed reset
+def set_seed(seed:int, set_torch=False):
   random.seed(seed)
   np.random.seed(seed)
-  torch.manual_seed(seed)
+  if set_torch: torch.manual_seed(seed)
   #torch.use_deterministic_algorithms(True)
   #torch.backends.cudnn.benchmark = False
 
@@ -210,9 +223,9 @@ def make_dl(ds, BS:int, shuffle=False, drop_last=False, num_workers=4) -> tuple[
   def worker_init_fn(worker_id:int):
     set_seed(torch.initial_seed() % 2**32)
 
-  sampler=DistributedSampler(ds, shuffle=shuffle, drop_last=drop_last)
-  return DataLoader(ds, batch_size=BS, shuffle=False, sampler=sampler, drop_last=drop_last, num_workers=num_workers,
-                    pin_memory=True, persistent_workers=True, worker_init_fn=worker_init_fn), sampler
+  sampler=DistributedSampler(ds, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=shuffle, drop_last=drop_last)
+  return DataLoader(ds, batch_size=BS, sampler=sampler, num_workers=num_workers, pin_memory=True,
+                    persistent_workers=True, worker_init_fn=worker_init_fn), sampler
 
 def train():
   assert torch.cuda.is_available()
@@ -225,16 +238,22 @@ def train():
   EVAL_IMG_DIR  = config["EVAL_IMG_DIR"]  = getenv("EVAL_IMG_DIR", "")
   SEED          = config["SEED"]          = getenv("SEED", 12345) % 2**32
   assert all(v for v in config.values()), f"set these env vars: {[k for k,v in config.items() if not v]}"
-  set_seed(SEED)
+  set_seed(SEED, set_torch=True)
 
   dist.init_process_group(backend="nccl")
   torch.cuda.set_device(local_rank)
   device = torch.device(f"cuda:{local_rank}")
 
-  data_train = ImageDataset(TRAIN_IMG_DIR)
-  dl_train, sampler = make_dl(data_train, BS)
-  data_eval = ImageDataset(EVAL_IMG_DIR)
-  dl_eval, _ = make_dl(data_eval, EVAL_BS, shuffle=False)
+  data_train = ImageDataset(TRAIN_IMG_DIR, transform_train)
+  dl_train, sampler = make_dl(data_train, BS, drop_last=True)
+  data_eval = ImageDataset(EVAL_IMG_DIR, transform_eval)
+  dl_eval, _ = make_dl(data_eval, EVAL_BS, drop_last=True, shuffle=False)
+
+  num_epochs = 100
+  for epoch in range(num_epochs):
+    sampler.set_epoch(epoch)
+    for batch in dl_train:
+      pass
 
 if __name__=="__main__":
   train()
