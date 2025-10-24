@@ -6,8 +6,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision.transforms import v2 as T
-from torchvision.io import read_image
+from torchvision.io import decode_image, ImageReadMode
 from helpers import ModuleListTyped as ModuleList, getenv
+from functools import partial
 from pathlib import Path
 from typing import Literal, Callable
 
@@ -194,24 +195,29 @@ class ImageDataset(Dataset):
   def __len__(self): return len(self.paths)
 
   def __getitem__(self, i:int) -> Tensor:
-    img = read_image(self.paths[i])
+    img = decode_image(self.paths[i], mode=ImageReadMode.RGB)
     img = self.transform(img) if self.transform else img
     assert isinstance(img, Tensor)
     return img
 
-MODEL_IMG_LEN=256
-def transform_train(img:Tensor) -> Tensor:
-  crop_len = max(int(min(img.shape[2:]) * np.random.uniform(0.5, 1.0)), MODEL_IMG_LEN)
-  img = T.RandomCrop(crop_len)(img)
+def common_transforms(img:Tensor) -> Tensor:
   # note reference uses albumentations.SmallestMaxSize(max_size=size, interpolation=cv2.INTER_AREA)
-  img = interpolate(img, size=(MODEL_IMG_LEN, MODEL_IMG_LEN), mode="area") 
-  img = (img/127.5 - 1.0).to(torch.float32)
+  img = img.unsqueeze(0).to(torch.float32)
+  img = interpolate(img, size=(MODEL_IMG_LEN, MODEL_IMG_LEN), mode="bicubic", align_corners=False, antialias=True).squeeze(0)
+  img = (img/127.5 - 1.0).contiguous().clone()
   return img
 
-def transform_eval(img:Tensor) -> Tensor:
-  return img[:, :, 0:MODEL_IMG_LEN, 0:MODEL_IMG_LEN]
+MODEL_IMG_LEN=256
+def transforms_train(img:Tensor, crop=False) -> Tensor:
+  crop_len = int(min(img.shape[1:]) * np.random.uniform(0.5, 1.0))
+  img = T.RandomCrop(crop_len)(img)
+  return common_transforms(img)
 
-# TODO: per-epoch seed reset
+def transforms_eval(img:Tensor) -> Tensor:
+  img = img[:, 0:MODEL_IMG_LEN, 0:MODEL_IMG_LEN]
+  return common_transforms(img)
+
+# TODO: per-epoch seed reset for simpler resume replication
 def set_seed(seed:int, set_torch=False):
   random.seed(seed)
   np.random.seed(seed)
@@ -229,6 +235,7 @@ def make_dl(ds, BS:int, shuffle=False, drop_last=False, num_workers=4) -> tuple[
 
 def train():
   assert torch.cuda.is_available()
+  dist.init_process_group(backend="nccl")
   assert torch.distributed.is_available() and torch.distributed.is_initialized() and (local_rank:=getenv("LOCAL_RANK", -1)) >= 0
 
   config = {}
@@ -240,20 +247,20 @@ def train():
   assert all(v for v in config.values()), f"set these env vars: {[k for k,v in config.items() if not v]}"
   set_seed(SEED, set_torch=True)
 
-  dist.init_process_group(backend="nccl")
   torch.cuda.set_device(local_rank)
   device = torch.device(f"cuda:{local_rank}")
 
-  data_train = ImageDataset(TRAIN_IMG_DIR, transform_train)
+  data_train = ImageDataset(TRAIN_IMG_DIR, transforms_train)
+  # TODO: change to drop_last=False, implement rank-based batch pad masking
   dl_train, sampler = make_dl(data_train, BS, drop_last=True)
-  data_eval = ImageDataset(EVAL_IMG_DIR, transform_eval)
+  data_eval = ImageDataset(EVAL_IMG_DIR, transforms_eval)
   dl_eval, _ = make_dl(data_eval, EVAL_BS, drop_last=True, shuffle=False)
 
   num_epochs = 100
   for epoch in range(num_epochs):
     sampler.set_epoch(epoch)
     for batch in dl_train:
-      pass
+      x = 1
 
 if __name__=="__main__":
   train()
