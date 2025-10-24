@@ -28,10 +28,12 @@ class ModuleListTyped(Generic[T], nn.ModuleList):
     super().__setitem__(idx, module)
 
 # based on https://discuss.pytorch.org/t/adding-typing-to-call-of-nn-module/118295
-class ModuleCallTyped(nn.Module):
+class ModuleTyped(nn.Module):
   def __call__(self, x: Tensor) -> Tensor:
     return super().__call__(x)
 
-class Conv2dTyped(ModuleCallTyped, nn.Conv2d): pass
+class Conv2dTyped(ModuleTyped, nn.Conv2d): pass
 
-class GroupNormTyped(ModuleCallTyped, nn.GroupNorm): pass
+class GroupNormTyped(ModuleTyped, nn.GroupNorm): pass
+
+class SequentialTyped(ModuleTyped, nn.Sequential): pass
