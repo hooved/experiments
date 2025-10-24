@@ -62,5 +62,28 @@
           "WANDB_MODE": "offline",
       }
     },
+    {
+      "name": "vae_train",
+      "type": "debugpy",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/vae",
+      "module": "torch.distributed.run",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "subProcess": true,                // let the debugger attach to all torchrun workers
+      "args": [
+        "--nproc_per_node=1", 
+        "train.py",
+      ],
+      "preLaunchTask": "shuffle-cuda",
+      "envFile": "${workspaceFolder}/.vscode/cuda.env",
+
+      "env": {
+          "TRAIN_IMG_DIR": "/raid/datasets/imagenet/train/n03733281",
+          "EVAL_IMG_DIR": "/raid/datasets/imagenet/val/n03733281",
+          //"PYTHONPATH": "${workspaceFolder}/repos/",
+          //"WANDB_MODE": "offline",
+      }
+    },
   ]
 }
