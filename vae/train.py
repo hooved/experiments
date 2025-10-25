@@ -229,8 +229,8 @@ class ScalingLayer(Module):
 class vgg16(nn.Module):
   def __init__(self):
     super().__init__()
-    weights_sd = torch.load(dl_cache("https://download.pytorch.org/models/vgg16-397923af.pth", "vgg16-397923af.pth"))
-    weights_sd = {k:v for k,v in weights_sd.items() if not k.startswith("classifier")}
+    state_dict = torch.load(dl_cache("https://download.pytorch.org/models/vgg16-397923af.pth", "vgg16-397923af.pth"))
+    state_dict = {k:v for k,v in state_dict.items() if not k.startswith("classifier")}
     in_ch = 3
     cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
     layers = []
@@ -242,7 +242,7 @@ class vgg16(nn.Module):
         layers += [nn.ReLU(inplace=True)]
         in_ch = v
     self.features = Sequential(*layers)
-    self.load_state_dict(weights_sd)
+    self.load_state_dict(state_dict)
 
   def forward(self, x:Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
     relu_1_2 = x = self.features[0:4](x)
@@ -252,12 +252,23 @@ class vgg16(nn.Module):
     relu_5_3 = x = self.features[23:30](x)
     return [relu_1_2, relu_2_2, relu_3_3, relu_4_3, relu_5_3]
 
+class NetLinLayer(Module):
+  def __init__(self, ch_in:int, ch_out:int=1):
+    super().__init__()
+    self.model = Sequential(nn.Dropout(), Conv2d(ch_in, ch_out, kernel_size=1, stride=1, bias=False))
+
 class LPIPS(Module):
   def __init__(self):
     super().__init__()
     self.scaling_layer = ScalingLayer()
-    self.chns = [64, 128, 256, 512, 512]
     self.net = vgg16()
+    self.lin0 = NetLinLayer(64)
+    self.lin1 = NetLinLayer(128)
+    self.lin2 = NetLinLayer(256)
+    self.lin3 = NetLinLayer(512)
+    self.lin4 = NetLinLayer(512)
+    self.load_state_dict(torch.load(dl_cache("https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1", "lpips.pth")), strict=False)
+    for param in self.parameters(): param.requires_grad=False
   
 class LPIPSWithDiscriminator(nn.Module):
   def __init__(self):
