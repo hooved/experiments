@@ -7,7 +7,8 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision.transforms import v2 as T
 from torchvision.io import decode_image, ImageReadMode
-from helpers import ModuleListTyped as ModuleList, getenv
+from torchvision.models.vgg import vgg16, VGG16_Weights
+from helpers import ModuleListTyped as ModuleList, getenv, register_buffer
 from functools import partial
 from pathlib import Path
 from typing import Literal, Callable
@@ -192,7 +193,7 @@ class NLayerDiscriminator(Module):
   def __init__(self, in_ch=3, ch=64, n_middle_layers=3):
     super().__init__()
     kw, pw = 4, 1
-    mults = [1, 8, 8, 8] + [2**n for n in range(4, n_middle_layers+1)]
+    mults = [1, 2, 4, 8] + [2**n for n in range(4, n_middle_layers+1)]
     layers = [Conv2d(in_ch, ch, kernel_size=kw, stride=2, padding=pw)]
     layers += [LeakyReLU(0.2, inplace=True)]
     for i in range(1, n_middle_layers+1):
@@ -215,9 +216,58 @@ class NLayerDiscriminator(Module):
   def forward(self, x:Tensor) -> Tensor:
     return self.main(x)
 
-class LPIPSWithDiscriminator(Module):
+class ScalingLayer(Module):
   def __init__(self):
     super().__init__()
+    self.shift = register_buffer(self, "shift", Tensor([-0.030, -0.088, -0.188]).reshape(1,3,1,1))
+    self.scale = register_buffer(self, "scale", Tensor([0.458, 0.448, 0.450]).reshape(1,3,1,1))
+  
+  def forward(self, x:Tensor) -> Tensor:
+    return (x - self.shift) / self.scale
+
+# based on merging torchvision/models/vgg.py make_layers function, together with ldm vgg16 module
+class vgg16(nn.Module):
+  def __init__(self):
+    super().__init__()
+    weights = VGG16_Weights.IMAGENET1K_V1
+    weights_sd = None # TODO download/torch.load
+    in_ch = 3
+    cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
+    layers = []
+    for v in cfg:
+      if v == "M": layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+      else:
+        assert isinstance(v, int)
+        layers += [Conv2d(in_ch, v, kernel_size=3, padding=1)]
+        layers += [nn.ReLU(inplace=True)]
+        in_ch = v
+    self.features = Sequential(*layers)
+    self.load_state_dict(weights_sd)
+
+  def forward(self, x:Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    relu_1_2 = x = self.features[0:4](x)
+    relu_2_2 = x = self.features[4:9](x)
+    relu_3_3 = x = self.features[9:16](x)
+    relu_4_3 = x = self.features[16:23](x)
+    relu_5_3 = x = self.features[23:30](x)
+    return [relu_1_2, relu_2_2, relu_3_3, relu_4_3, relu_5_3]
+
+class LPIPS(Module):
+  def __init__(self):
+    super().__init__()
+    self.scaling_layer = ScalingLayer()
+    self.chns = [64, 128, 256, 512, 512]
+    self.net = vgg16()
+  
+class LPIPSWithDiscriminator(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.logvar = nn.Parameter(torch.zeros(size=()))
+    self.discriminator = NLayerDiscriminator(in_ch=3, ch=64, n_middle_layers=3)
+
+  def forward(self, original:Tensor, recon:Tensor) -> tuple[Tensor, Tensor]:
+    rec_loss = torch.abs(original - recon)
+    #return g_loss, d_loss
 
 class ImageDataset(Dataset):
   def __init__(self, img_dir:str, transform:Callable|None=None, exts:set[str]={".jpeg"}):
