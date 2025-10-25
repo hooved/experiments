@@ -8,7 +8,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torchvision.transforms import v2 as T
 from torchvision.io import decode_image, ImageReadMode
 from torchvision.models.vgg import vgg16, VGG16_Weights
-from helpers import ModuleListTyped as ModuleList, getenv, register_buffer
+from helpers import ModuleListTyped as ModuleList, getenv, register_buffer, dl_cache
 from functools import partial
 from pathlib import Path
 from typing import Literal, Callable
@@ -229,8 +229,8 @@ class ScalingLayer(Module):
 class vgg16(nn.Module):
   def __init__(self):
     super().__init__()
-    weights = VGG16_Weights.IMAGENET1K_V1
-    weights_sd = None # TODO download/torch.load
+    weights_sd = torch.load(dl_cache("https://download.pytorch.org/models/vgg16-397923af.pth", "vgg16-397923af.pth"))
+    weights_sd = {k:v for k,v in weights_sd.items() if not k.startswith("classifier")}
     in_ch = 3
     cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
     layers = []
@@ -346,4 +346,5 @@ def train():
       x = 1
 
 if __name__=="__main__":
+  test = LPIPS()
   train()
