@@ -1,6 +1,6 @@
 import os, platform
 from collections.abc import Iterator
-from typing import Generic, TypeVar, overload
+from typing import Generic, TypeVar, overload, Any
 from torch import nn, Tensor
 from urllib.request import urlopen
 from pathlib import Path
@@ -45,7 +45,16 @@ class GroupNormTyped(ModuleTyped, nn.GroupNorm): pass
 
 class SequentialTyped(ModuleTyped, nn.Sequential):
   @overload
+  def __getitem__(self, idx: int) -> "nn.Module": ...
+
+  @overload
   def __getitem__(self, idx: slice) -> "SequentialTyped": ...
+
+  def __getitem__(self, idx: int|slice) -> Any:
+    result = super().__getitem__(idx)
+    if isinstance(idx, slice):
+      return self.__class__(*result)
+    return result
 
 # misc features
 def dl_cache(url:str, fn:str) -> str:

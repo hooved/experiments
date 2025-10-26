@@ -1,7 +1,7 @@
 # minimal vae training implementation, based on https://github.com/CompVis/latent-diffusion
 import torch, helpers, random, numpy as np
 from torch import Tensor, nn, distributed as dist
-from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate
+from torch.nn.functional import silu, pad, scaled_dot_product_attention, interpolate, normalize
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -229,8 +229,6 @@ class ScalingLayer(Module):
 class vgg16(nn.Module):
   def __init__(self):
     super().__init__()
-    state_dict = torch.load(dl_cache("https://download.pytorch.org/models/vgg16-397923af.pth", "vgg16-397923af.pth"))
-    state_dict = {k:v for k,v in state_dict.items() if not k.startswith("classifier")}
     in_ch = 3
     cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
     layers = []
@@ -242,6 +240,8 @@ class vgg16(nn.Module):
         layers += [nn.ReLU(inplace=True)]
         in_ch = v
     self.features = Sequential(*layers)
+    state_dict = torch.load(dl_cache("https://download.pytorch.org/models/vgg16-397923af.pth", "vgg16-397923af.pth"), map_location="cpu")
+    state_dict = {k:v for k,v in state_dict.items() if not k.startswith("classifier")}
     self.load_state_dict(state_dict)
 
   def forward(self, x:Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -250,14 +250,14 @@ class vgg16(nn.Module):
     relu_3_3 = x = self.features[9:16](x)
     relu_4_3 = x = self.features[16:23](x)
     relu_5_3 = x = self.features[23:30](x)
-    return [relu_1_2, relu_2_2, relu_3_3, relu_4_3, relu_5_3]
+    return [normalize(x, p=2, dim=1, eps=1e-10) for x in [relu_1_2, relu_2_2, relu_3_3, relu_4_3, relu_5_3]]
 
 class NetLinLayer(Module):
   def __init__(self, ch_in:int, ch_out:int=1):
     super().__init__()
     self.model = Sequential(nn.Dropout(), Conv2d(ch_in, ch_out, kernel_size=1, stride=1, bias=False))
 
-class LPIPS(Module):
+class LPIPS(nn.Module):
   def __init__(self):
     super().__init__()
     self.scaling_layer = ScalingLayer()
@@ -267,14 +267,28 @@ class LPIPS(Module):
     self.lin2 = NetLinLayer(256)
     self.lin3 = NetLinLayer(512)
     self.lin4 = NetLinLayer(512)
-    self.load_state_dict(torch.load(dl_cache("https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1", "lpips.pth")), strict=False)
-    for param in self.parameters(): param.requires_grad=False
+    self.load_state_dict(torch.load(dl_cache("https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1", "lpips.pth"), map_location="cpu"),
+                         strict=False)
+    for param in self.parameters():
+      param.requires_grad=False
+
+  def forward(self, original:Tensor, recon:Tensor) -> Tensor:
+    original_vgg = self.net(self.scaling_layer(original))
+    recon_vgg = self.net(self.scaling_layer(recon))
+    ret = torch.zeros(original.shape[0], 1, 1, 1, device=original.device)
+    for i, lin in enumerate([self.lin0, self.lin1, self.lin2, self.lin3, self.lin4]):
+      ret += lin.model((original_vgg[i] - recon_vgg[i]) ** 2).mean(dim=[2,3], keepdim=True)
+    return ret
+  
+  def __call__(self, original:Tensor, recon:Tensor) -> Tensor:
+    return super().__call__(original, recon)
   
 class LPIPSWithDiscriminator(nn.Module):
   def __init__(self):
     super().__init__()
     self.logvar = nn.Parameter(torch.zeros(size=()))
     self.discriminator = NLayerDiscriminator(in_ch=3, ch=64, n_middle_layers=3)
+    self.perceptual_loss = LPIPS().eval()
 
   def forward(self, original:Tensor, recon:Tensor) -> tuple[Tensor, Tensor]:
     rec_loss = torch.abs(original - recon)
@@ -357,5 +371,9 @@ def train():
       x = 1
 
 if __name__=="__main__":
-  test = LPIPS()
+  device="cuda:3"
+  test = LPIPS().eval().to(device)
+  test_in_1 = torch.rand(1,3,256,256).to(device)
+  test_in_2 = torch.rand(1,3,256,256).to(device)
+  out = test(test_in_1, test_in_2)
   train()
