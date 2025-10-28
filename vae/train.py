@@ -189,33 +189,6 @@ class AutoencoderKL(nn.Module):
     x_recon = self.decode(z)
     return x_recon, mean, logvar
 
-class NLayerDiscriminator(Module):
-  def __init__(self, in_ch=3, ch=64, n_middle_layers=3):
-    super().__init__()
-    kw, pw = 4, 1
-    mults = [1, 2, 4, 8] + [2**n for n in range(4, n_middle_layers+1)]
-    layers = [Conv2d(in_ch, ch, kernel_size=kw, stride=2, padding=pw)]
-    layers += [LeakyReLU(0.2, inplace=True)]
-    for i in range(1, n_middle_layers+1):
-      prev_ch = mults[i-1] * ch
-      next_ch = mults[i] * ch
-      stride = 2 if i < n_middle_layers else 1
-      layers += [Conv2d(prev_ch, next_ch, kernel_size=kw, stride=stride, padding=pw, bias=False)]
-      layers += [BatchNorm2d(next_ch)]
-      layers += [LeakyReLU(0.2, inplace=True)]
-    layers += [Conv2d(next_ch, 1, kernel_size=1, stride=1, padding=pw)]
-    
-    for layer in layers:
-      if isinstance(layer, Conv2d):
-        nn.init.normal_(layer.weight.data, 0.0, 0.02)
-      elif isinstance(layer, BatchNorm2d):
-        nn.init.normal_(layer.weight.data, 1.0, 0.02)
-
-    self.main = Sequential(*layers)
-
-  def forward(self, x:Tensor) -> Tensor:
-    return self.main(x)
-
 class ScalingLayer(Module):
   def __init__(self):
     super().__init__()
@@ -282,8 +255,35 @@ class LPIPS(nn.Module):
   
   def __call__(self, original:Tensor, recon:Tensor) -> Tensor:
     return super().__call__(original, recon)
+
+class NLayerDiscriminator(Module):
+  def __init__(self, in_ch=3, ch=64, n_middle_layers=3):
+    super().__init__()
+    kw, pw = 4, 1
+    mults = [1, 2, 4, 8] + [2**n for n in range(4, n_middle_layers+1)]
+    layers = [Conv2d(in_ch, ch, kernel_size=kw, stride=2, padding=pw)]
+    layers += [LeakyReLU(0.2, inplace=True)]
+    for i in range(1, n_middle_layers+1):
+      prev_ch = mults[i-1] * ch
+      next_ch = mults[i] * ch
+      stride = 2 if i < n_middle_layers else 1
+      layers += [Conv2d(prev_ch, next_ch, kernel_size=kw, stride=stride, padding=pw, bias=False)]
+      layers += [BatchNorm2d(next_ch)]
+      layers += [LeakyReLU(0.2, inplace=True)]
+    layers += [Conv2d(next_ch, 1, kernel_size=kw, stride=1, padding=pw)]
+    
+    for layer in layers:
+      if isinstance(layer, Conv2d):
+        nn.init.normal_(layer.weight.data, 0.0, 0.02)
+      elif isinstance(layer, BatchNorm2d):
+        nn.init.normal_(layer.weight.data, 1.0, 0.02)
+
+    self.main = Sequential(*layers)
+
+  def forward(self, x:Tensor) -> Tensor:
+    return self.main(x)
   
-class LPIPSWithDiscriminator(nn.Module):
+class Losses(nn.Module):
   def __init__(self):
     super().__init__()
     self.logvar = nn.Parameter(torch.zeros(size=()))
