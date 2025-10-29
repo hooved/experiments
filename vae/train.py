@@ -7,9 +7,8 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision.transforms import v2 as T
 from torchvision.io import decode_image, ImageReadMode
-from torchvision.models.vgg import vgg16, VGG16_Weights
+from torchvision.models.vgg import vgg16
 from helpers import ModuleListTyped as ModuleList, getenv, register_buffer, dl_cache
-from functools import partial
 from pathlib import Path
 from typing import Literal, Callable
 
@@ -283,16 +282,15 @@ class NLayerDiscriminator(Module):
   def forward(self, x:Tensor) -> Tensor:
     return self.main(x)
   
-class Losses(nn.Module):
+class TrainStep(nn.Module):
   def __init__(self):
-    super().__init__()
+    self.ae = AutoencoderKL()
     self.logvar = nn.Parameter(torch.zeros(size=()))
-    self.discriminator = NLayerDiscriminator(in_ch=3, ch=64, n_middle_layers=3)
     self.perceptual_loss = LPIPS().eval()
+    self.discriminator = NLayerDiscriminator(in_ch=3, ch=64, n_middle_layers=3)
 
-  def forward(self, original:Tensor, recon:Tensor) -> tuple[Tensor, Tensor]:
-    rec_loss = torch.abs(original - recon)
-    #return g_loss, d_loss
+  def forward(self, batch:Tensor, use_discriminator=False):
+    pass
 
 class ImageDataset(Dataset):
   def __init__(self, img_dir:str, transform:Callable|None=None, exts:set[str]={".jpeg"}):
@@ -346,14 +344,17 @@ def train():
   assert torch.distributed.is_available() and torch.distributed.is_initialized() and (local_rank:=getenv("LOCAL_RANK", -1)) >= 0
 
   config = {}
+  WORLD_SIZE    = config["WORLD_SIZE"]    = dist.get_world_size()
   BS            = config["BS"]            = getenv("BS", 6)
   EVAL_BS       = config["EVAL_BS"]       = getenv("EVAL_BS", 6)
   GRADACC_STEPS = config["GRADACC_STEPS"] = getenv("GRADACC_STEPS", 2)
+  BASE_LR       = config["BASE_LR"]       = getenv("BASE_LR", 4.5e-6)
   TRAIN_IMG_DIR = config["TRAIN_IMG_DIR"] = getenv("TRAIN_IMG_DIR", "")
   EVAL_IMG_DIR  = config["EVAL_IMG_DIR"]  = getenv("EVAL_IMG_DIR", "")
   SEED          = config["SEED"]          = getenv("SEED", 12345) % 2**32
   assert all(v for v in config.values()), f"set these env vars: {[k for k,v in config.items() if not v]}"
   set_seed(SEED, set_torch=True)
+  lr = WORLD_SIZE * BS * GRADACC_STEPS * BASE_LR
 
   torch.cuda.set_device(local_rank)
   device = torch.device(f"cuda:{local_rank}")
@@ -363,10 +364,15 @@ def train():
   dl_train, sampler = make_dl(data_train, BS, drop_last=True)
   data_eval = ImageDataset(EVAL_IMG_DIR, transforms_eval)
   dl_eval, _ = make_dl(data_eval, EVAL_BS, drop_last=True, shuffle=False)
+  train_step = TrainStep().to(local_rank)
+  opt_ae = torch.optim.Adam(list(train_step.ae.parameters()) + [train_step.logvar], lr=lr, betas=(0.5, 0.9))
+  opt_discriminator = torch.optim.Adam(train_step.discriminator.parameters(), lr=lr, betas=(0.5, 0.9))
+  train_step = DDP(train_step, device_ids=[local_rank])
 
   num_epochs = 100
   for epoch in range(num_epochs):
     sampler.set_epoch(epoch)
+    use_discriminator = True if num_epochs >= 5 else False
     for batch in dl_train:
       x = 1
 
