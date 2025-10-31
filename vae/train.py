@@ -188,6 +188,9 @@ class AutoencoderKL(nn.Module):
     x_recon = self.decode(z)
     return x_recon, mean, logvar
 
+  def __call__(self, x:Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    return super().__call__(x)
+
 class ScalingLayer(Module):
   def __init__(self):
     super().__init__()
@@ -283,14 +286,24 @@ class NLayerDiscriminator(Module):
     return self.main(x)
   
 class TrainStep(nn.Module):
-  def __init__(self):
+  def __init__(self, kl_weight=1.0e-6):
     self.ae = AutoencoderKL()
     self.logvar = nn.Parameter(torch.zeros(size=()))
     self.perceptual_loss = LPIPS().eval()
     self.discriminator = NLayerDiscriminator(in_ch=3, ch=64, n_middle_layers=3)
+    self.kl_weight = kl_weight
 
-  def forward(self, batch:Tensor, use_discriminator=False):
-    pass
+  def forward(self, original:Tensor, use_discriminator=False) -> tuple[Tensor, Tensor|None]:
+    recon, latent_mean, latent_logvar = self.ae(original)
+    loss_recon = torch.abs(recon - original) + self.perceptual_loss(original, recon)
+    loss_recon = torch.sum(loss_recon / torch.exp(self.logvar) + self.logvar) / loss_recon.shape[0]
+    loss_kl = 0.5 * torch.sum(latent_mean.pow(2) + torch.exp(latent_logvar) - 1 - latent_logvar, dim=[1,2,3])
+    loss_kl = torch.sum(loss_kl) / loss_kl.shape[0]
+    if use_discriminator:
+      pass
+    loss = loss_recon + self.kl_weight * loss_kl
+    return loss, None
+
 
 class ImageDataset(Dataset):
   def __init__(self, img_dir:str, transform:Callable|None=None, exts:set[str]={".jpeg"}):
@@ -349,6 +362,7 @@ def train():
   EVAL_BS       = config["EVAL_BS"]       = getenv("EVAL_BS", 6)
   GRADACC_STEPS = config["GRADACC_STEPS"] = getenv("GRADACC_STEPS", 2)
   BASE_LR       = config["BASE_LR"]       = getenv("BASE_LR", 4.5e-6)
+  KL_WEIGHT     = config["KL_WEIGHT"]     = getenv("KL_WEIGHT", 1.0e-6)
   TRAIN_IMG_DIR = config["TRAIN_IMG_DIR"] = getenv("TRAIN_IMG_DIR", "")
   EVAL_IMG_DIR  = config["EVAL_IMG_DIR"]  = getenv("EVAL_IMG_DIR", "")
   SEED          = config["SEED"]          = getenv("SEED", 12345) % 2**32
@@ -364,17 +378,18 @@ def train():
   dl_train, sampler = make_dl(data_train, BS, drop_last=True)
   data_eval = ImageDataset(EVAL_IMG_DIR, transforms_eval)
   dl_eval, _ = make_dl(data_eval, EVAL_BS, drop_last=True, shuffle=False)
-  train_step = TrainStep().to(local_rank)
+  train_step = TrainStep(kl_weight=KL_WEIGHT).to(local_rank)
   opt_ae = torch.optim.Adam(list(train_step.ae.parameters()) + [train_step.logvar], lr=lr, betas=(0.5, 0.9))
-  opt_discriminator = torch.optim.Adam(train_step.discriminator.parameters(), lr=lr, betas=(0.5, 0.9))
+  opt_disc = torch.optim.Adam(train_step.discriminator.parameters(), lr=lr, betas=(0.5, 0.9))
   train_step = DDP(train_step, device_ids=[local_rank])
 
   num_epochs = 100
   for epoch in range(num_epochs):
     sampler.set_epoch(epoch)
     use_discriminator = True if num_epochs >= 5 else False
-    for batch in dl_train:
-      x = 1
+    for i, batch in enumerate(dl_train):
+      loss_recon, loss_disc = train_step(batch, use_discriminator)
+      assert isinstance(loss_recon, Tensor) and (isinstance(loss_disc, (Tensor, type(None))))
 
 if __name__=="__main__":
   device="cuda:3"
