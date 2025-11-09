@@ -158,10 +158,6 @@ class Decoder(Module):
     x = self.conv_out(x)
     return x
 
-class DiagonalGaussian(Module):
-  def __init__(self, mean_logvar:Tensor):
-    self.mean, self.logvar = mean_logvar.chunk(2, dim=1)
-
 class AutoencoderKL(nn.Module):
   def __init__(self):
     super().__init__()
