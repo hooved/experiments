@@ -4,3 +4,6 @@
 [submodule "repos/latent-diffusion"]
 	path = repos/latent-diffusion
 	url = https://github.com/hooved/latent-diffusion.git
+[submodule "repos/shepherd"]
+	path = repos/shepherd
+	url = https://github.com/hooved/shepherd.git
