@@ -7,3 +7,6 @@
 [submodule "repos/shepherd"]
 	path = repos/shepherd
 	url = https://github.com/hooved/shepherd.git
+[submodule "repos/grover"]
+	path = repos/grover
+	url = https://github.com/hooved/grover.git
