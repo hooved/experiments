@@ -10,3 +10,6 @@
 [submodule "repos/grover"]
 	path = repos/grover
 	url = https://github.com/hooved/grover.git
+[submodule "repos/shepherd-score"]
+	path = repos/shepherd-score
+	url = https://github.com/hooved/shepherd-score.git
