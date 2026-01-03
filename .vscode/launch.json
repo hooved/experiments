@@ -52,7 +52,7 @@
       "subProcess": true,
       "args": [
         "--base", "configs/autoencoder/autoencoder_kl_32x32x4.yaml",
-        "-t", "--accelerator", "gpu", "--devices", "0,1,2,3",
+        "-t", "--accelerator", "gpu", "--devices", "0",
       ],
       "preLaunchTask": "shuffle-cuda",
       "envFile": "${workspaceFolder}/.vscode/cuda.env",
@@ -84,6 +84,18 @@
           //"PYTHONPATH": "${workspaceFolder}/repos/",
           //"WANDB_MODE": "offline",
       }
+    },
+    {
+      "name": "shepherd_inference",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/repos/shepherd/examples/basic_inference/basic_inference_test.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/repos/shepherd",
+      "args": [
+        "--checkpoint", "/home/hooved/.cache/huggingface/hub/models--kabeywar--shepherd/snapshots/a815864dd8d5048cc2fd4cda2655cac4bd3afb0f/x1x3x4_diffusion_mosesaq_20240824_submission.ckpt"
+      ]
     },
   ]
 }
