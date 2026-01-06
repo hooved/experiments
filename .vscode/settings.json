@@ -1,0 +1,7 @@
+{
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.extraPaths": [
+    "/home/hooved/experiments/repos/shepherd-score",
+    "/home/hooved/experiments/repos/shepherd-score/src"
+  ]
+}
