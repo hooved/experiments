@@ -13,3 +13,6 @@
 [submodule "repos/shepherd-score"]
 	path = repos/shepherd-score
 	url = https://github.com/hooved/shepherd-score.git
+[submodule "repos/prexsyn"]
+	path = repos/prexsyn
+	url = https://github.com/hooved/prexsyn.git
