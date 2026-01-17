@@ -16,3 +16,6 @@
 [submodule "repos/prexsyn"]
 	path = repos/prexsyn
 	url = https://github.com/hooved/prexsyn.git
+[submodule "repos/minRF"]
+	path = repos/minRF
+	url = https://github.com/hooved/minRF.git
