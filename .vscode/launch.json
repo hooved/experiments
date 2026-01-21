@@ -97,5 +97,29 @@
         "--checkpoint", "/home/hooved/.cache/huggingface/hub/models--kabeywar--shepherd/snapshots/a815864dd8d5048cc2fd4cda2655cac4bd3afb0f/x1x3x4_diffusion_mosesaq_20240824_submission.ckpt"
       ]
     },
+    {
+      "name": "shepherd_conditional",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/repos/shepherd/examples/conditional.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/repos/shepherd",
+      //"args": [
+        //"--checkpoint", "/home/hooved/.cache/huggingface/hub/models--kabeywar--shepherd/snapshots/a815864dd8d5048cc2fd4cda2655cac4bd3afb0f/x1x3x4_diffusion_mosesaq_20240824_submission.ckpt"
+      //]
+    },
+    {
+      "name": "shepherd_confgen_validate",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/repos/shepherd/scripts/conformer_pipeline_e2e.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/repos/shepherd/scripts/",
+      "args": [
+        "--validate",
+      ]
+    }
   ]
 }
