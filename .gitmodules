@@ -19,6 +19,3 @@
 [submodule "repos/minRF"]
 	path = repos/minRF
 	url = https://github.com/hooved/minRF.git
-[submodule "repos/prexsyn-engine"]
-	path = repos/prexsyn-engine
-	url = https://github.com/luost26/prexsyn-engine.git
