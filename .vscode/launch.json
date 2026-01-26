@@ -120,6 +120,41 @@
       "args": [
         "--validate",
       ]
+    },
+    {
+      "name": "prexsyn_train",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/repos/prexsyn/.pixi/envs/default/bin/python",
+      "program": "${workspaceFolder}/repos/prexsyn/scripts/train.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/repos/prexsyn",
+      "args": [
+        "training.max_steps=100",
+        "training.val_check_interval=50",
+        "data.batch_size=256",
+      ],
+      "env": {
+        "WANDB_MODE": "offline",
+      }
+    },
+    {
+      "name": "shepherd_train_debug",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/repos/shepherd/venv/bin/python",
+      "program": "${workspaceFolder}/repos/shepherd/training/train.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "cwd": "${workspaceFolder}/repos/shepherd/training",
+      "args": [
+        "params_debug",
+        "42"
+      ],
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0"
+      }
     }
   ]
 }
