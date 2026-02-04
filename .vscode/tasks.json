@@ -5,6 +5,25 @@
       "label": "shuffle-cuda",
       "type": "shell",
       "command": "echo CUDA_VISIBLE_DEVICES=$(shuf -e 0 1 2 3 | paste -sd, -) > .vscode/cuda.env"
+    },
+    {
+      "label": "biozernike-mvn-debug",
+      "type": "shell",
+      "command": "nix-shell -p maven jdk21 --run \"MAVEN_OPTS='-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005' mvn test -Dtest=SmallMoleculeTest -DforkCount=0\"",
+      "options": {
+        "cwd": "${workspaceFolder}/repos/biozernike"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Listening for transport",
+          "endsPattern": "^Listening for transport.*5005"
+        }
+      }
     }
   ]
 }
