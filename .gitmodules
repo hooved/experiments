@@ -28,3 +28,6 @@
 [submodule "repos/xtb"]
 	path = repos/xtb
 	url = https://github.com/hooved/xtb.git
+[submodule "repos/tinygrad"]
+	path = repos/tinygrad
+	url = https://github.com/hooved/tinygrad.git
